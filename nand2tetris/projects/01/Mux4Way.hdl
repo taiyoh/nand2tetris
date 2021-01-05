@@ -1,0 +1,13 @@
+CHIP Mux4Way {
+    IN a, b, c, d, sel0, sel1;
+    OUT out;
+
+    PARTS:
+
+    Not(in=sel1, out=notsel1);
+    Mux(a=a, b=b, sel=sel0, out=w1);
+    Mux(a=c, b=d, sel=sel0, out=w2);
+    And(a=w1, b=notsel1, out=ww1);
+    And(a=w2, b=sel1, out=ww2);
+    Or(a=ww1, b=ww2, out=out);
+}
