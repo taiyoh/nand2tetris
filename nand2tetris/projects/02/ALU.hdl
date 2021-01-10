@@ -60,7 +60,7 @@ CHIP ALU {
     Mux16(a=xy1, b=xy2, sel=no, out=xy3);
 
     IsZero(in=xy3, out=zr);
-    IsNegative(in=xy3, zero[0..15]=false, out=ng);
+    IsNegative(in=xy3, out=ng);
 
     Or16(a=xy3, b=xy3, out=out);
 }
