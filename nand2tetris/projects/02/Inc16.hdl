@@ -33,5 +33,5 @@ CHIP Inc16 {
     HalfAdder(a=in[12], b=pc12, sum=out[12], carry=pc13);
     HalfAdder(a=in[13], b=pc13, sum=out[13], carry=pc14);
     HalfAdder(a=in[14], b=pc14, sum=out[14], carry=pc15);
-    HalfAdder(a=in[15], b=pc15, sum=out[15], carry=pc16);
+    HalfAdder(a=in[15], b=pc15, sum=out[15]);
 }
