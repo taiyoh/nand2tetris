@@ -1,0 +1,26 @@
+CHIP IsZero {
+    IN in[16];
+    OUT out;
+
+    PARTS:
+    // Put your code here:
+    Or(a=in[0], b=in[1], out=w1);
+    Or(a=in[2], b=in[3], out=w2);
+    Or(a=in[4], b=in[5], out=w3);
+    Or(a=in[6], b=in[7], out=w4);
+    Or(a=in[8], b=in[9], out=w5);
+    Or(a=in[10], b=in[11], out=w6);
+    Or(a=in[12], b=in[13], out=w7);
+    Or(a=in[14], b=in[15], out=w8);
+
+    Or(a=w1, b=w2, out=ww1);
+    Or(a=w3, b=w4, out=ww2);
+    Or(a=w5, b=w6, out=ww3);
+    Or(a=w7, b=w8, out=ww4);
+
+    Or(a=ww1, b=ww2, out=www1);
+    Or(a=ww3, b=ww4, out=www2);
+
+    Or(a=www1, b=www2, out=pre);
+    Not(in=pre, out=out);
+}
