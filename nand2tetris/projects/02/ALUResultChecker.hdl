@@ -1,11 +1,12 @@
-CHIP IsZero {
+CHIP ALUResultChecker {
     IN in[16];
-    OUT out;
+    OUT zr, ng;
 
     PARTS:
-    // Put your code here:
     Or8Way(in=in[0..7], out=zc1);
     Or8Way(in=in[8..15], out=zc2);
     Or(a=zc1, b=zc2, out=zc);
-    Not(in=zc, out=out);
+    Not(in=zc, out=zr);
+
+    Or(a=in[15], b=false, out=ng);
 }
