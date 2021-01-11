@@ -44,23 +44,14 @@ CHIP ALU {
     PARTS:
    // Put you code here:
 
-    Mux16(a=x, sel=zx, out=x1);
-    Not16(in=x1, out=notx1);
-    Mux16(a=x1, b=notx1, sel=nx, out=x2);
+    ALUMux16(a=x, sel[0]=zx, sel[1]=nx, out=x1);
+    ALUMux16(a=y, sel[0]=zy, sel[1]=ny, out=y1);
 
-    Mux16(a=y, sel=zy, out=y1);
-    Not16(in=y1, out=noty1);
-    Mux16(a=y1, b=noty1, sel=ny, out=y2);
+    Add16(a=x1, b=y1, out=xplusy);
+    And16(a=x1, b=y1, out=xandy);
 
-    Add16(a=x2, b=y2, out=xplusy);
-    And16(a=x2, b=y2, out=xandy);
+    ALUMux16(a=xandy, b=xplusy, sel[0]=f, sel[1]=no, out=res, out=out, out[15]=ng);
 
-    Mux16(a=xandy, b=xplusy, sel=f, out=r);
-    Not16(in=r, out=notr);
-    Mux16(a=r, b=notr, sel=no, out=res);
-
-    ALUResultChecker(in=res, zr=zr, ng=ng);
-
-    Not16(in=res, out=res1);
-    Not16(in=res1, out=out);
+    Or16Way(in=res, out=zc);
+    Not(in=zc, out=zr);
 }
