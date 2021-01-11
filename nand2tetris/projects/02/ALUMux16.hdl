@@ -1,0 +1,10 @@
+CHIP ALUMux16 {
+    IN a[16], b[16], sel[2];
+    OUT out[16];
+
+    PARTS:
+
+    Mux16(a=a, b=b, sel=sel[0], out=w1);
+    Not16(in=w1, out=notw1);
+    Mux16(a=w1, b=notw1, sel=sel[1], out=out);    
+}
