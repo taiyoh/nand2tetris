@@ -15,7 +15,7 @@ C_COMMAND = CommandType('C')
 L_COMMAND = CommandType('L')
 
 comment = re.compile(r'//.+')
-addr = re.compile(r'^@[0-9]+$')
+addr = re.compile(r'^@.+$')
 comp = re.compile(r'^([MDA])?=?([MDA+-10!]+);?(J(GT|GE|EQ|NE|LT|LE|MP))?$')
 
 
@@ -49,9 +49,9 @@ class Parser:
                 self.currentCommand = A_COMMAND
                 self.__setComp(None, None, None)
                 return
-            smbl = comp.findall(self.currentSymbol)
-            if len(smbl) > 0:
-                smbl: tuple = smbl[0]
+            compInst = comp.findall(self.currentSymbol)
+            if len(compInst) > 0:
+                smbl: tuple = compInst[0]
                 self.currentCommand = C_COMMAND
                 self.__setComp(smbl[0], smbl[1], smbl[2])
                 return
@@ -138,6 +138,58 @@ class Code:
         return jumpMap[nemonic]
 
 
+class MemoryMap:
+    table: dict[str:int]
+    addr: int
+    reserved: dict[str:int] = {
+        'SP': 0,
+        'LCL': 1,
+        'ARG': 2,
+        'THIS': 3,
+        'THAT': 4,
+        'R0': 0,
+        'R1': 1,
+        'R2': 2,
+        'R3': 3,
+        'R4': 4,
+        'R5': 5,
+        'R6': 6,
+        'R7': 7,
+        'R8': 8,
+        'R9': 9,
+        'R10': 10,
+        'R11': 11,
+        'R12': 12,
+        'R13': 13,
+        'R14': 14,
+        'R15': 15,
+        'SCREEN': 16384,
+        'KBD': 24576,
+    }
+
+    def __init__(self) -> None:
+        self.table = dict()
+        self.addr = 16
+
+    def parse(self, smbl: str) -> int:
+        msg = smbl.replace('@', '')
+        try:
+            return int(msg)
+        except:
+            pass
+        try:
+            return self.reserved[msg]
+        except:
+            pass
+        try:
+            return self.table[msg]
+        except:
+            addr = self.addr
+            self.table[msg] = addr
+            self.addr += 1
+            return addr
+
+
 class SymbolTable:
     table: dict
     cursor: dict
@@ -183,20 +235,20 @@ def main() -> None:
 
     # 2nd read
     lines = list()
+    mm = MemoryMap()
     parser = Parser(path)
     parser.advance()
     while parser.hasMoreCommands():
         ct = parser.commandType()
         if ct is A_COMMAND:
-            a = int(parser.symbol().replace('@', ''))
-            lines.append(''.join(format(byte, '04b')
-                                 for byte in a.to_bytes(4, byteorder='big'))+"\n")
+            bl = mm.parse(parser.symbol()).to_bytes(4, byteorder='big')
+            lines.append(''.join(format(b, '04b') for b in bl)+"\n")
         if ct is C_COMMAND:
-            d = Code.dest(parser.dest())
             c = Code.comp(parser.comp())
+            d = Code.dest(parser.dest())
             j = Code.jump(parser.jump())
-            lines.append(''.join(format(byte, 'b')
-                                 for byte in (b'\x01\x01\x01'+c+d+j))+"\n")
+            bl = b'\x01\x01\x01'+c+d+j
+            lines.append(''.join(format(b, 'b') for b in bl)+"\n")
         parser.advance()
 
     f = open(dest, mode='w')
