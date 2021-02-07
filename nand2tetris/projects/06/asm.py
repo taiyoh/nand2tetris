@@ -30,8 +30,8 @@ class Parser:
     currentJump: str
 
     def __init__(self, name: str) -> None:
-        fd = open(name)
-        self.lines = fd.readlines()
+        with open(name) as f:
+            self.lines = f.readlines()
 
     def __setComp(self, s1, s2, s3):
         self.currentDest = s1 or None
