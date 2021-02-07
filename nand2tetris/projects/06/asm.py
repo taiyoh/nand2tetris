@@ -17,6 +17,7 @@ L_COMMAND = CommandType('L')
 comment = re.compile(r'//.+')
 addr = re.compile(r'^@.+$')
 comp = re.compile(r'^([MDA])?=?([MDA+-10!]+);?(J(GT|GE|EQ|NE|LT|LE|MP))?$')
+label = re.compile(r'^\(.+\)$')
 
 
 class Parser:
@@ -47,6 +48,10 @@ class Parser:
             self.lineCount += 1
             if addr.match(self.currentSymbol) is not None:
                 self.currentCommand = A_COMMAND
+                self.__setComp(None, None, None)
+                return
+            if label.match(self.currentSymbol) is not None:
+                self.currentCommand = L_COMMAND
                 self.__setComp(None, None, None)
                 return
             compInst = comp.findall(self.currentSymbol)
@@ -138,7 +143,7 @@ class Code:
         return jumpMap[nemonic]
 
 
-class MemoryMap:
+class AddressMap:
     table: dict[str:int]
     addr: int
     reserved: dict[str:int] = {
@@ -166,10 +171,12 @@ class MemoryMap:
         'SCREEN': 16384,
         'KBD': 24576,
     }
+    label: str
 
     def __init__(self) -> None:
         self.table = dict()
         self.addr = 16
+        self.label = None
 
     def parse(self, smbl: str) -> int:
         msg = smbl.replace('@', '')
@@ -188,6 +195,15 @@ class MemoryMap:
             self.table[msg] = addr
             self.addr += 1
             return addr
+
+    def captureLabel(self, smbl: str) -> None:
+        self.label = smbl.replace('(', '').replace(')', '')
+
+    def bindAddr(self, addr: int) -> None:
+        if self.label is None:
+            return
+        self.table[self.label] = addr
+        self.label = None
 
 
 class SymbolTable:
@@ -223,26 +239,34 @@ def main() -> None:
     dest = sys.argv[2]
     print(f"asm!!! {path}")
     tbl = SymbolTable()
+    am = AddressMap()
 
     # 1st read
     parser = Parser(path)
     addr = 0
     parser.advance()
     while parser.hasMoreCommands():
-        tbl.addEntry(parser.symbol(), addr)
-        addr += 1
+        s = parser.symbol()
+        if parser.commandType() is L_COMMAND:
+            am.captureLabel(s)
+            parser.advance()
+            continue
+        else:
+            tbl.addEntry(s, addr)
+            am.bindAddr(addr)
+            addr += 1
         parser.advance()
 
     # 2nd read
     lines = list()
-    mm = MemoryMap()
     parser = Parser(path)
     parser.advance()
     while parser.hasMoreCommands():
         ct = parser.commandType()
         if ct is A_COMMAND:
-            bl = mm.parse(parser.symbol()).to_bytes(4, byteorder='big')
-            lines.append(''.join(format(b, '04b') for b in bl)+"\n")
+            bl = am.parse(parser.symbol()).to_bytes(2, byteorder='big')
+            line = ''.join(format(b, '08b') for b in bl)
+            lines.append(f"{line}\n")
         if ct is C_COMMAND:
             c = Code.comp(parser.comp())
             d = Code.dest(parser.dest())
