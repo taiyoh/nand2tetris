@@ -12,7 +12,7 @@ def main() -> None:
         ref = f.readlines()
 
     print(f'file: {created}')
-    for line in difflib.unified_diff(orig, ref, 'created', 'reference', '', '', lineterm=''):
+    for line in difflib.unified_diff(orig, ref, "created\n", "reference\n", '', '', lineterm=''):
         print(line, end='')
 
 
