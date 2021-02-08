@@ -1,23 +1,12 @@
+import enum
 import sys
 import re
-import binascii
 
 
-class CommandType:
-    typ = None
-
-    def __init__(self, t: str) -> None:
-        self.typ = t
-
-
-A_COMMAND = CommandType('A')
-C_COMMAND = CommandType('C')
-L_COMMAND = CommandType('L')
-
-comment = re.compile(r'//.+')
-addr = re.compile(r'^@.+$')
-comp = re.compile(r'^([MDA])?=?([MDA+-10!]+);?(J(GT|GE|EQ|NE|LT|LE|MP))?$')
-label = re.compile(r'^\(.+\)$')
+class CommandType(enum.Enum):
+    A = 'A_COMMAND'
+    C = 'C_COMMAND'
+    L = 'L_COMMAND'
 
 
 class Parser:
@@ -28,6 +17,12 @@ class Parser:
     currentDest: str
     currentComp: str
     currentJump: str
+
+    comment = re.compile(r'//.+')
+    addrInst = re.compile(r'^@.+$')
+    compInst = re.compile(
+        r'^([MDA]{1,3})?=?([MDA+-10!&|]+);?(J(GT|GE|EQ|NE|LT|LE|MP))?$')
+    labelInst = re.compile(r'^\(.+\)$')
 
     def __init__(self, name: str) -> None:
         with open(name) as f:
@@ -44,20 +39,20 @@ class Parser:
     def advance(self) -> None:
         while len(self.lines) > self.lineCount:
             self.currentSymbol = re.sub(
-                comment, '', self.lines[self.lineCount].strip().replace(' ', ''))
+                self.comment, '', self.lines[self.lineCount].strip().replace(' ', ''))
             self.lineCount += 1
-            if addr.match(self.currentSymbol) is not None:
-                self.currentCommand = A_COMMAND
+            if self.addrInst.match(self.currentSymbol) is not None:
+                self.currentCommand = CommandType.A
                 self.__setComp(None, None, None)
                 return
-            if label.match(self.currentSymbol) is not None:
-                self.currentCommand = L_COMMAND
+            if self.labelInst.match(self.currentSymbol) is not None:
+                self.currentCommand = CommandType.L
                 self.__setComp(None, None, None)
                 return
-            compInst = comp.findall(self.currentSymbol)
+            compInst = self.compInst.findall(self.currentSymbol)
             if len(compInst) > 0:
                 smbl: tuple = compInst[0]
-                self.currentCommand = C_COMMAND
+                self.currentCommand = CommandType.C
                 self.__setComp(smbl[0], smbl[1], smbl[2])
                 return
         self.currentCommand = None
@@ -66,7 +61,10 @@ class Parser:
         return self.currentCommand
 
     def symbol(self) -> str:
-        return self.currentSymbol
+        if self.currentCommand is CommandType.A:
+            return self.currentSymbol.replace('@', '')
+        else:
+            return self.currentSymbol.replace('(', '').replace(')', '')
 
     def dest(self) -> str:
         return self.currentDest
@@ -78,160 +76,112 @@ class Parser:
         return self.currentJump
 
 
-destMap: dict[str:bytearray] = {
-    None: b'\x00\x00\x00',
-    'M': b'\x00\x00\x01',
-    'D': b'\x00\x01\x00',
-    'MD': b'\x00\x01\x01',
-    'A': b'\x01\x00\x00',
-    'AM': b'\x01\x00\x01',
-    'AD': b'\x01\x01\x00',
-    'AMD': b'\x01\x01\x01',
-}
-
-compMap: dict[str:bytearray] = {
-    '0': b'\x00\x01\x00\x01\x00\x01\x00',
-    '1': b'\x00\x01\x01\x01\x01\x01\x01',
-    '-1': b'\x00\x01\x01\x01\x00\x01\x00',
-    'D': b'\x00\x00\x00\x01\x01\x00\x00',
-    'A': b'\x00\x01\x01\x00\x00\x00\x00',
-    'M': b'\x01\x01\x01\x00\x00\x00\x00',
-    '!D': b'\x00\x00\x00\x01\x01\x00\x01',
-    '!A': b'\x00\x01\x01\x00\x00\x00\x01',
-    '!M': b'\x01\x01\x01\x00\x00\x00\x01',
-    '-D': b'\x00\x00\x00\x01\x01\x01\x01',
-    '-A': b'\x00\x01\x01\x00\x00\x01\x01',
-    '-M': b'\x01\x01\x01\x00\x00\x01\x01',
-    'D+1': b'\x00\x00\x01\x01\x01\x01\x01',
-    'A+1': b'\x00\x01\x01\x00\x01\x01\x01',
-    'M+1': b'\x01\x01\x01\x00\x01\x01\x01',
-    'D-1': b'\x00\x00\x00\x01\x01\x01\x00',
-    'A-1': b'\x00\x01\x01\x00\x00\x01\x00',
-    'M-1': b'\x01\x01\x01\x00\x00\x01\x00',
-    'D+A': b'\x00\x00\x00\x00\x00\x01\x00',
-    'D+M': b'\x01\x00\x00\x00\x00\x01\x00',
-    'D-A': b'\x00\x00\x01\x00\x00\x01\x01',
-    'D-M': b'\x01\x00\x01\x00\x00\x01\x01',
-    'A-D': b'\x00\x00\x00\x00\x01\x01\x01',
-    'M-D': b'\x01\x00\x00\x00\x01\x01\x01',
-    'D&A': b'\x00\x00\x00\x00\x00\x00\x00',
-    'D&M': b'\x01\x00\x00\x00\x00\x00\x00',
-    'D|A': b'\x00\x00\x01\x00\x01\x00\x01',
-    'D|M': b'\x01\x00\x01\x00\x01\x00\x01',
-}
-
-jumpMap: dict[str:bytearray] = {
-    None: b'\x00\x00\x00',
-    'JGT': b'\x00\x00\x01',
-    'JEQ': b'\x00\x01\x00',
-    'JGE': b'\x00\x01\x01',
-    'JLT': b'\x01\x00\x00',
-    'JNE': b'\x01\x00\x01',
-    'JLE': b'\x01\x01\x00',
-    'JMP': b'\x01\x01\x01',
+reservedSymbol: dict[str:int] = {
+    'SP': 0,
+    'LCL': 1,
+    'ARG': 2,
+    'THIS': 3,
+    'THAT': 4,
+    'R0': 0,
+    'R1': 1,
+    'R2': 2,
+    'R3': 3,
+    'R4': 4,
+    'R5': 5,
+    'R6': 6,
+    'R7': 7,
+    'R8': 8,
+    'R9': 9,
+    'R10': 10,
+    'R11': 11,
+    'R12': 12,
+    'R13': 13,
+    'R14': 14,
+    'R15': 15,
+    'SCREEN': 16384,
+    'KBD': 24576,
 }
 
 
 class Code:
+    destMap: dict[str:bytearray] = {
+        None: b'\x00\x00\x00',
+        'M': b'\x00\x00\x01',
+        'D': b'\x00\x01\x00',
+        'MD': b'\x00\x01\x01',
+        'A': b'\x01\x00\x00',
+        'AM': b'\x01\x00\x01',
+        'AD': b'\x01\x01\x00',
+        'AMD': b'\x01\x01\x01',
+    }
+
+    compMap: dict[str:bytearray] = {
+        '0': b'\x00\x01\x00\x01\x00\x01\x00',
+        '1': b'\x00\x01\x01\x01\x01\x01\x01',
+        '-1': b'\x00\x01\x01\x01\x00\x01\x00',
+        'D': b'\x00\x00\x00\x01\x01\x00\x00',
+        'A': b'\x00\x01\x01\x00\x00\x00\x00',
+        'M': b'\x01\x01\x01\x00\x00\x00\x00',
+        '!D': b'\x00\x00\x00\x01\x01\x00\x01',
+        '!A': b'\x00\x01\x01\x00\x00\x00\x01',
+        '!M': b'\x01\x01\x01\x00\x00\x00\x01',
+        '-D': b'\x00\x00\x00\x01\x01\x01\x01',
+        '-A': b'\x00\x01\x01\x00\x00\x01\x01',
+        '-M': b'\x01\x01\x01\x00\x00\x01\x01',
+        'D+1': b'\x00\x00\x01\x01\x01\x01\x01',
+        'A+1': b'\x00\x01\x01\x00\x01\x01\x01',
+        'M+1': b'\x01\x01\x01\x00\x01\x01\x01',
+        'D-1': b'\x00\x00\x00\x01\x01\x01\x00',
+        'A-1': b'\x00\x01\x01\x00\x00\x01\x00',
+        'M-1': b'\x01\x01\x01\x00\x00\x01\x00',
+        'D+A': b'\x00\x00\x00\x00\x00\x01\x00',
+        'D+M': b'\x01\x00\x00\x00\x00\x01\x00',
+        'D-A': b'\x00\x00\x01\x00\x00\x01\x01',
+        'D-M': b'\x01\x00\x01\x00\x00\x01\x01',
+        'A-D': b'\x00\x00\x00\x00\x01\x01\x01',
+        'M-D': b'\x01\x00\x00\x00\x01\x01\x01',
+        'D&A': b'\x00\x00\x00\x00\x00\x00\x00',
+        'D&M': b'\x01\x00\x00\x00\x00\x00\x00',
+        'D|A': b'\x00\x00\x01\x00\x01\x00\x01',
+        'D|M': b'\x01\x00\x01\x00\x01\x00\x01',
+    }
+
+    jumpMap: dict[str:bytearray] = {
+        None: b'\x00\x00\x00',
+        'JGT': b'\x00\x00\x01',
+        'JEQ': b'\x00\x01\x00',
+        'JGE': b'\x00\x01\x01',
+        'JLT': b'\x01\x00\x00',
+        'JNE': b'\x01\x00\x01',
+        'JLE': b'\x01\x01\x00',
+        'JMP': b'\x01\x01\x01',
+    }
+
     def dest(nemonic: str) -> bytearray:
-        return destMap[nemonic]
+        return __class__.destMap[nemonic]
 
     def comp(nemonic: str) -> bytearray:
-        return compMap[nemonic]
+        return __class__.compMap[nemonic]
 
     def jump(nemonic: str) -> bytearray:
-        return jumpMap[nemonic]
-
-
-class AddressMap:
-    table: dict[str:int]
-    addr: int
-    reserved: dict[str:int] = {
-        'SP': 0,
-        'LCL': 1,
-        'ARG': 2,
-        'THIS': 3,
-        'THAT': 4,
-        'R0': 0,
-        'R1': 1,
-        'R2': 2,
-        'R3': 3,
-        'R4': 4,
-        'R5': 5,
-        'R6': 6,
-        'R7': 7,
-        'R8': 8,
-        'R9': 9,
-        'R10': 10,
-        'R11': 11,
-        'R12': 12,
-        'R13': 13,
-        'R14': 14,
-        'R15': 15,
-        'SCREEN': 16384,
-        'KBD': 24576,
-    }
-    label: str
-
-    def __init__(self) -> None:
-        self.table = dict()
-        self.addr = 16
-        self.label = None
-
-    def parse(self, smbl: str) -> int:
-        msg = smbl.replace('@', '')
-        try:
-            return int(msg)
-        except:
-            pass
-        try:
-            return self.reserved[msg]
-        except:
-            pass
-        try:
-            return self.table[msg]
-        except:
-            addr = self.addr
-            self.table[msg] = addr
-            self.addr += 1
-            return addr
-
-    def captureLabel(self, smbl: str) -> None:
-        self.label = smbl.replace('(', '').replace(')', '')
-
-    def bindAddr(self, addr: int) -> None:
-        if self.label is None:
-            return
-        self.table[self.label] = addr
-        self.label = None
+        return __class__.jumpMap[nemonic]
 
 
 class SymbolTable:
-    table: dict
-    cursor: dict
+    table: dict[str:int]
 
     def __init__(self) -> None:
         self.table = dict()
-        self.cursor = dict()
 
     def addEntry(self, symbol: str, address: int) -> None:
-        l = self.table.get(symbol)
-        if l is None:
-            l = list()
-        l.append(address)
-        self.table[symbol] = l
-        self.cursor[symbol] = 0
-        pass
+        # print(f'addEntry {symbol}:{address}')
+        self.table[symbol] = address
 
     def contains(self, symbol: str) -> bool:
-        l = self.table.get(symbol)
-        return l is not None or len(l) > self.cursor[symbol]
+        return self.table.get(symbol) is not None
 
     def getAddress(self, symbol: str) -> int:
-        l: list[int] = self.table.get(symbol)
-        idx = self.cursor[symbol]
-        self.cursor[symbol] += 1
-        return l[idx]
+        return self.table.get(symbol)
 
 
 def main() -> None:
@@ -239,35 +189,45 @@ def main() -> None:
     dest = sys.argv[2]
     print(f"asm!!! {path}")
     tbl = SymbolTable()
-    am = AddressMap()
 
     # 1st read
     parser = Parser(path)
     addr = 0
+    labels: list[str] = list()
     parser.advance()
     while parser.hasMoreCommands():
-        s = parser.symbol()
-        if parser.commandType() is L_COMMAND:
-            am.captureLabel(s)
-            parser.advance()
-            continue
+        if parser.commandType() is CommandType.L:
+            labels.append(parser.symbol())
         else:
-            tbl.addEntry(s, addr)
-            am.bindAddr(addr)
+            for l in labels:
+                tbl.addEntry(l, addr)
+            labels.clear()
             addr += 1
         parser.advance()
 
+    print('=======')
     # 2nd read
+    memAddr = 16
     lines = list()
     parser = Parser(path)
     parser.advance()
     while parser.hasMoreCommands():
         ct = parser.commandType()
-        if ct is A_COMMAND:
-            bl = am.parse(parser.symbol()).to_bytes(2, byteorder='big')
-            line = ''.join(format(b, '08b') for b in bl)
-            lines.append(f"{line}\n")
-        if ct is C_COMMAND:
+        if ct is CommandType.A:
+            s = parser.symbol()
+            try:
+                a = int(s)
+            except:
+                if s in reservedSymbol:
+                    a = reservedSymbol[s]
+                elif tbl.contains(s):
+                    a = tbl.getAddress(s)
+                else:
+                    a = memAddr
+                    tbl.addEntry(s, memAddr)
+                    memAddr += 1
+            lines.append(f"{format(a, '016b')}\n")
+        if ct is CommandType.C:
             c = Code.comp(parser.comp())
             d = Code.dest(parser.dest())
             j = Code.jump(parser.jump())
@@ -275,8 +235,8 @@ def main() -> None:
             lines.append(''.join(format(b, 'b') for b in bl)+"\n")
         parser.advance()
 
-    f = open(dest, mode='w')
-    f.writelines(lines)
+    with open(dest, mode='w') as f:
+        f.writelines(lines)
 
 
 if __name__ == '__main__':
